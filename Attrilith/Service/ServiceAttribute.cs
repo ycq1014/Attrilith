@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Collections.Concurrent;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -34,7 +35,7 @@ public class ServiceAttribute : System.Attribute
 }
 
 [AttributeUsage(AttributeTargets.Class)]
-public abstract class HostedServiceAttribute(bool startImmediately = false) : System.Attribute
+public class HostedServiceAttribute(bool startImmediately = false) : System.Attribute
 {
     public bool RunImmediately { get; } = startImmediately;
 }
@@ -75,6 +76,12 @@ public class AutoRegisterOptions
 
 public static class ServiceCollectionExtensions
 {
+    private static readonly ConcurrentDictionary<Assembly, Type[]> _hostedServiceCache = new();
+
+    private static readonly MethodInfo AddHostedServiceGenericMethod = typeof(ServiceCollectionHostedServiceExtensions)
+        .GetMethods()
+        .First(m => m is { Name: "AddHostedService", IsGenericMethod: true });
+
     public static IServiceCollection AddSmartServices(
         this IServiceCollection services)
     {
@@ -272,27 +279,40 @@ public static class ServiceCollectionExtensions
     private static void RegisterHostedServices(IServiceCollection services, Assembly assembly,
         AutoRegisterOptions? options = null)
     {
-        if (options?.AutoRegisterHostedServices == false)
-        {
-            return;
-        }
+        if (options?.AutoRegisterHostedServices == false) return;
 
-        var hostedServices = assembly.GetTypes()
-            .Where(t => !t.IsAbstract &&
-                        (typeof(IHostedService).IsAssignableFrom(t) ||
-                         t.GetCustomAttribute<HostedServiceAttribute>() != null));
+        // 缓存程序集的托管服务类型
+        var hostedServices = _hostedServiceCache.GetOrAdd(assembly, asm =>
+        {
+            var hostedServiceType = typeof(IHostedService);
+            return asm.GetExportedTypes() // 只扫描公开类型提升性能
+                .Where(t => t.IsClass &&
+                            !t.IsAbstract &&
+                            !t.IsGenericType &&
+                            (hostedServiceType.IsAssignableFrom(t) ||
+                             t.GetCustomAttribute<HostedServiceAttribute>() != null))
+                .ToArray();
+        });
 
         foreach (var serviceType in hostedServices)
         {
-            var attr = serviceType.GetCustomAttribute<HostedServiceAttribute>();
-            services.AddHostedService(sp =>
-                (IHostedService)ActivatorUtilities.CreateInstance(sp, serviceType));
+            if (services.Any(d => d.ImplementationType == serviceType)) continue;
 
-            // Optionally handle startImmediately flag
-            if (attr?.RunImmediately == true)
+            try
             {
-                services.Configure<HostOptions>(opts =>
-                    opts.ServicesStartConcurrently = true);
+                // 预编译泛型方法调用
+                var genericMethod = AddHostedServiceGenericMethod.MakeGenericMethod(serviceType);
+                genericMethod.Invoke(null, new object[] { services });
+
+                // 启动配置
+                if (serviceType.GetCustomAttribute<HostedServiceAttribute>() is { RunImmediately: true })
+                {
+                    services.Configure<HostOptions>(opts => opts.ServicesStartConcurrently = true);
+                }
+            }
+            catch (Exception ex)
+            {
+                // ignored
             }
         }
     }
