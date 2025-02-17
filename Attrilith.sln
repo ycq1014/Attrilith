@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Simple", "Simple\Simple.csproj", "{5129EC51-BE74-419A-8FCB-EBFC879256D6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Attrilith", "Attrilith\Attrilith.csproj", "{8426ED8A-7E27-4336-825F-17F3244AA112}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5129EC51-BE74-419A-8FCB-EBFC879256D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5129EC51-BE74-419A-8FCB-EBFC879256D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5129EC51-BE74-419A-8FCB-EBFC879256D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5129EC51-BE74-419A-8FCB-EBFC879256D6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8426ED8A-7E27-4336-825F-17F3244AA112}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8426ED8A-7E27-4336-825F-17F3244AA112}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8426ED8A-7E27-4336-825F-17F3244AA112}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8426ED8A-7E27-4336-825F-17F3244AA112}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
