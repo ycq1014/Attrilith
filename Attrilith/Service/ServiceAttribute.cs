@@ -162,55 +162,109 @@ public static class ServiceCollectionExtensions
                 return;
             }
 
-            Console.WriteLine($"[约定注册] {t.Name} -> {interfaceType.Name} ({lifetime})");
             services.TryAdd(new ServiceDescriptor(interfaceType, t, lifetime));
         });
     }
 
-    // 根据特性注册服务
-    private static void RegisterByAttribute(IServiceCollection services, Assembly assembly,
+    private static void RegisterByAttribute(IServiceCollection services,
+        Assembly assembly,
         AutoRegisterOptions? options = null)
     {
+        // 参数校验前置
         if (options?.AutoRegisterByAttribute == false)
         {
             return;
         }
 
-        foreach (var type in assembly.GetTypes())
+        foreach (var type in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
         {
-            var serviceAttr = type.GetCustomAttribute<ServiceAttribute>();
-            if (serviceAttr == null) continue;
-
-            Type serviceType;
-
-            if (serviceAttr.ServiceType is not null)
-            {
-                var serviceTypes = new List<Type> { serviceAttr.ServiceType };
-
-                serviceType = serviceTypes[0];
-            }
-            else
-            {
-                if (serviceAttr.AsSelf)
-                    serviceType = type;
-                else
-                    serviceType = type.GetInterfaces().FirstOrDefault() ?? type;
-            }
-
             try
             {
-                var lifetime = serviceAttr.Lifetime;
-                services.TryAdd(new ServiceDescriptor(
-                    serviceType,
-                    type,
-                    lifetime
-                ));
+                var serviceAttr = type.GetCustomAttribute<ServiceAttribute>();
+                if (serviceAttr == null) continue;
+
+                // 明确服务类型优先级：ServiceType > AsSelf > 第一个接口 > 自身
+                var serviceType = serviceAttr.ServiceType ??
+                                  (serviceAttr.AsSelf ? type : GetPrimaryInterface(type));
+
+                // 主注册
+                RegisterServiceWithLifetime(services, type, serviceType, serviceAttr.Lifetime);
+
+                // 自动接口注册（根据配置决定）
+                if (options?.AutoRegisterInterfaces == true)
+                {
+                    RegisterImplementedInterfaces(services, type, serviceAttr.Lifetime);
+                }
             }
-            catch (Exception e)
+            catch (Exception e) when (e is TypeLoadException or InvalidOperationException)
             {
-                Console.WriteLine($"Error registering service {type.Name}: {e.Message}");
-                throw;
+                // Ignore
             }
+        }
+    }
+
+    // 获取主要接口（可扩展为自定义策略）
+    private static Type GetPrimaryInterface(Type implementationType)
+    {
+        // 优先选择非系统接口
+        var interfaces = implementationType.GetInterfaces()
+            .ToList();
+
+        return interfaces.FirstOrDefault() ?? implementationType;
+    }
+
+    // 带过滤的接口注册
+    private static void RegisterImplementedInterfaces(IServiceCollection services,
+        Type implementationType,
+        ServiceLifetime lifetime)
+    {
+        foreach (var interfaceType in implementationType.GetInterfaces()
+                     .Where(i => !IsExcludedInterface(i)))
+        {
+            services.TryAdd(new ServiceDescriptor(
+                interfaceType,
+                implementationType,
+                lifetime
+            ));
+        }
+    }
+
+    // 系统接口过滤（可配置化扩展）
+    private static bool IsExcludedInterface(Type interfaceType)
+    {
+        var excludedInterfaces = new[]
+        {
+            typeof(IDisposable),
+            typeof(IAsyncDisposable)
+        };
+
+        return excludedInterfaces.Contains(interfaceType) ||
+               interfaceType.Namespace?.StartsWith("System") == true;
+    }
+
+    // 统一服务注册方法 
+    private static void RegisterServiceWithLifetime(
+        IServiceCollection services,
+        Type implementationType,
+        Type serviceType,
+        ServiceLifetime lifetime)
+    {
+        // 处理泛型类型定义（如IRepository<> -> Repository<>）
+        if (serviceType.IsGenericTypeDefinition && implementationType.IsGenericTypeDefinition)
+        {
+            services.TryAdd(new ServiceDescriptor(
+                serviceType,
+                implementationType,
+                lifetime
+            ));
+        }
+        else
+        {
+            services.TryAdd(new ServiceDescriptor(
+                serviceType,
+                implementationType,
+                lifetime
+            ));
         }
     }
 
